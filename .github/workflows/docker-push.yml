@@ -8,12 +8,19 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # ✅ 在这里定义job级别的环境变量（整个job都能引用）
+    env:
+      ALIYUN_REGISTRY: "${{ secrets.ALIYUN_REGISTRY }}"          # 阿里云ACR域名（如registry.cn-hangzhou.aliyuncs.com）
+      ALIYUN_NAME_SPACE: "${{ secrets.ALIYUN_NAME_SPACE }}"    # 阿里云命名空间
+      ALIYUN_REGISTRY_USER: "${{ secrets.ALIYUN_REGISTRY_USER }}" # ACR登录用户名（AccessKey ID）
+      ALIYUN_REGISTRY_PASSWORD: "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}" # ACR登录密码（AccessKey Secret）
+
     steps:
       # 1. 检出仓库代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 读取配置文件，设置环境变量
+      # 2. 读取配置文件，设置镜像名/版本号环境变量
       - name: Load custom config
         run: |
           source ./docker-build.config
@@ -23,29 +30,34 @@ jobs:
           else
             echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           fi
+          # 可选：调试打印，确认所有环境变量都读取成功
+          echo "ALIYUN_REGISTRY: $ALIYUN_REGISTRY"
+          echo "ALIYUN_NAME_SPACE: $ALIYUN_NAME_SPACE"
+          echo "IMAGE_NAME: ${{ env.IMAGE_NAME }}"
+          echo "IMAGE_TAG: ${{ env.IMAGE_TAG }}"
 
       # 3. 配置Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 4. 登录阿里云ACR（关键修复：补全registry参数）
+      # 4. 登录阿里云ACR（引用统一定义的环境变量）
       - name: Login to Aliyun ACR
         uses: docker/login-action@v3
         with:
-          # ✅ 核心修复：指定阿里云ACR的仓库地址，不再默认登录Docker Hub
-          registry: ${{ vars.ALIYUN_REGISTRY }}
-          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
-          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+          # ✅ 核心：引用env里的阿里云域名，彻底避免登录Docker Hub
+          registry: ${{ env.ALIYUN_REGISTRY }}
+          username: ${{ env.ALIYUN_REGISTRY_USER }}
+          password: ${{ env.ALIYUN_REGISTRY_PASSWORD }}
           logout: true
 
-      # 5. 构建并推送镜像
+      # 5. 构建并推送镜像（全部引用环境变量，更简洁）
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ vars.ALIYUN_REGISTRY }}/${{ vars.ALIYUN_NAME_SPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ vars.ALIYUN_REGISTRY }}/${{ vars.ALIYUN_NAME_SPACE }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ALIYUN_REGISTRY }}/${{ env.ALIYUN_NAME_SPACE }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.ALIYUN_REGISTRY }}/${{ env.ALIYUN_NAME_SPACE }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
