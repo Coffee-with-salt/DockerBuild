@@ -7,5 +7,5 @@ WORKDIR /app
 # Global install of @antv/mcp-server-chart
 RUN npm install -g @antv/mcp-server-chart
 
-# Start the server (using streamable for transmission)
+# Start the server (using streamable for transmission)  
 CMD ["mcp-server-chart", "--transport", "sse", "--port", "1123"]
