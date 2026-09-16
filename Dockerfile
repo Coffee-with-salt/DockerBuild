@@ -1,12 +1,25 @@
-# Use Node.js LTS as the base image (Node.js 18+ required)
-FROM node:lts
+FROM node:22-alpine AS frontend
+WORKDIR /build
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
 
-# Set workdir
-WORKDIR /app
+FROM python:3.13-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Global install of @antv/mcp-server-chart
-RUN npm install -g @antv/mcp-server-chart
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-wqy-microhei \
+    && rm -rf /var/lib/apt/lists/*
 
-# Start the server (using streamable for transmission)  
-CMD ["mcp-server-chart", "--transport", "sse", "--port", "1123"]
- 
+WORKDIR /app/backend
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONPATH=/app/backend
+
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --all-extras --no-dev
+
+COPY backend/ ./
+COPY --from=frontend /build/dist /app/frontend/dist
+
+ENV PATH="/app/backend/.venv/bin:$PATH"
+EXPOSE 7302
